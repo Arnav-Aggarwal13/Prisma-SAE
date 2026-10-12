@@ -10,4 +10,4 @@
 #SBATCH --qos=mit_amf_standard_gpu
 set -euo pipefail
 cd $HOME/Prisma-SAE && source env.sh
-uv run python check_tokens_prisma.py --images $TRAIN_IMAGES --shards $SHARDS_ROOT/$TRAIN_HASH --saev-layer 48
+uv run python check_tokens_prisma.py --images $TRAIN_IMAGES --shards $SHARDS_ROOT/$TRAIN_HASH --saev-layer 48 --model-local-path $MODEL_LOCAL

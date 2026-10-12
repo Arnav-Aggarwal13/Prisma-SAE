@@ -14,3 +14,6 @@ export WANDB_DIR=$RUNS_DIR/wandb
 mkdir -p "$RUNS_DIR" "$WANDB_DIR"
 export UV_PYTHON_PREFERENCE=only-managed
 export UV_PYTHON=3.12
+# bigG weights: symlink to the safetensors already in $HF_HOME + a config json, so Prisma needs no download.
+export MODEL_LOCAL=$RUNS_DIR/bigg_local/open_clip_model.safetensors
+export HF_HUB_OFFLINE=1

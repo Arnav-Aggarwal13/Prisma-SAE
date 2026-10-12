@@ -17,5 +17,5 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 TOTAL_TOKENS=${TOTAL_TOKENS:-128000000}
 SWEEP=${SWEEP:-sweeps/first_sweep.py}
 uv run python train_prisma.py --route shards \
-  --train-shards $SHARDS_ROOT/$TRAIN_HASH --val-shards $SHARDS_ROOT/$VAL_HASH --saev-layer 48 \
+  --train-shards $SHARDS_ROOT/$TRAIN_HASH --val-shards $SHARDS_ROOT/$VAL_HASH --saev-layer 48 --model-local-path $MODEL_LOCAL \
   --ckpt-dir $RUNS_DIR --total-tokens $TOTAL_TOKENS --sweep $SWEEP
