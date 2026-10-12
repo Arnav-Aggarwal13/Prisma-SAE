@@ -62,7 +62,7 @@ def main():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--batch-size", type=int, default=4096)
     p.add_argument("--sweep", help="python file defining make_cfgs() -> list[dict]")
-    p.add_argument("--sweep-index", help="comma-separated indices into the sweep's make_cfgs() list; run only those entries")
+    p.add_argument("--sweep-index", help="indices into the sweep list, separated by , or + (use + with sbatch --export); run only those entries")
     p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="config override for all runs, repeatable")
     p.add_argument("--eval-batches", type=int, default=50)
     p.add_argument("--eval-images", type=int, default=2000, help="images route: eval images (x256 tokens)")
@@ -125,7 +125,7 @@ def main():
 
     sweep = load_sweep(args.sweep)
     if args.sweep_index:
-        idx = [int(i) for i in args.sweep_index.split(",")]
+        idx = [int(i) for i in args.sweep_index.replace("+", ",").split(",")]
         assert all(0 <= i < len(sweep) for i in idx), f"--sweep-index {idx} out of range for {len(sweep)} entries"
         sweep = [sweep[i] for i in idx]
     for overrides in sweep:

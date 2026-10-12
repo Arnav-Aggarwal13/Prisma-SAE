@@ -23,7 +23,7 @@ SWEEP=${SWEEP-sweeps/first_sweep.py}
 CKPT_DIR=${CKPT_DIR:-$RUNS_DIR}
 SWEEP_ARGS=()
 [ -n "$SWEEP" ] && SWEEP_ARGS=(--sweep "$SWEEP")
-# SWEEP_INDEX=0,1,2 runs only those entries of the sweep (split a sweep over several jobs).
+# SWEEP_INDEX=0+1+2 (use +, since sbatch --export splits on commas) runs only those entries of the sweep (split a sweep over several jobs).
 [ -n "${SWEEP_INDEX:-}" ] && SWEEP_ARGS+=(--sweep-index "$SWEEP_INDEX")
 uv run python train_prisma.py --route shards \
   --train-shards $SHARDS_ROOT/$TRAIN_HASH --val-shards $SHARDS_ROOT/$VAL_HASH --saev-layer 48 --model-local-path $MODEL_LOCAL \
