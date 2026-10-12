@@ -141,6 +141,9 @@ Prisma logs to W&B every `wandb_log_frequency` (10) steps, on the current traini
 - `sparsity/dead_features`: latents that haven't fired in `dead_feature_window` = 5000 steps (20M tokens at batch 4096; saev uses 10M). Set `--set dead_feature_window=2441` for 10M at 4096.
 - `metrics/mean_log10_feature_sparsity` and its histogram: every `feature_sampling_window` (1000) steps.
 - `details/current_learning_rate`.
+- Added by `_SaevMetricsMixin`, logged at the same steps (every `wandb_log_frequency`), same definitions as saev:
+  - `metrics/normalized_mse`, `metrics/sse_sae`, `metrics/sse_baseline`: current train batch, SSE about the batch mean (saev's train-loop `metrics/normalized_mse`).
+  - `val/normalized_mse`, `val/l0`: a fixed val set (`val_n_batches` = 4 batches, 16,384 tokens at batch 4096, loaded once from the val shards) via `evaluate_sae`. Costs a few percent of step time; `--set val_n_batches=0` turns it off, higher gives a less noisy curve.
 
 Eval: `train_prisma.py` runs `evaluate_sae` on val after each run and writes it to `results.jsonl`. Judge runs by these:
 - `normalized_mse` = SSE(x - x_hat) / SSE(x - mean) over all eval tokens. Same definition as saev's `eval/normalized_mse`, so the numbers are comparable to the saev runs on the same val shards.

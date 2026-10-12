@@ -38,6 +38,7 @@ class HookedSAEConfig(VisionModelSAERunnerConfig):
     """
 
     hook_point_name: str | None = None
+    val_n_batches: int = 4  # fixed val batches scored at every metrics step (0 = off); --set val_n_batches=N
 
     @property
     def hook_point(self) -> str:
@@ -187,21 +188,53 @@ class _CleanupMixin:
                 wandb.finish()
 
 
-class ImagesSAETrainer(_CleanupMixin, VisionSAETrainer):
+class _SaevMetricsMixin:
+    """At every Prisma metrics step (wandb_log_frequency), also log saev's metrics to the same W&B step.
+
+    metrics/normalized_mse, metrics/sse_sae, metrics/sse_baseline: the current train batch, as in saev's train loop (SSE about the batch mean, fp64).
+    val/normalized_mse, val/l0: a fixed val set of cfg.val_n_batches batches from `make_val`, loaded once, scored with evaluate_sae.
+    """
+
+    make_val: Callable[[], Iterable] | None = None
+    _val_batches: list | None = None
+
+    def _log_metrics(self, sparse_autoencoder, hyperparams, optimizer, sae_in, sae_out, *args):
+        super()._log_metrics(sparse_autoencoder, hyperparams, optimizer, sae_in, sae_out, *args)
+        import wandb
+
+        step = args[-2]  # args ends with (..., l0, n_training_steps, n_training_tokens)
+        x, xh = sae_in.double(), sae_out.double()
+        sse, sst = (xh - x).pow(2).sum().item(), (x - x.mean(0)).pow(2).sum().item()
+        metrics = {"metrics/normalized_mse": sse / sst, "metrics/sse_sae": sse, "metrics/sse_baseline": sst}
+        if self.make_val is not None and self.cfg.val_n_batches > 0:
+            if self._val_batches is None:
+                it = iter(self.make_val())
+                try:
+                    self._val_batches = [_batch_acts(b).to(self.cfg.device, self.cfg.dtype) for _, b in zip(range(self.cfg.val_n_batches), it)]
+                finally:
+                    _close(it)
+            ev = evaluate_sae(sparse_autoencoder, lambda: self._val_batches, n_batches=len(self._val_batches))
+            sparse_autoencoder.train()
+            metrics.update({"val/normalized_mse": ev["normalized_mse"], "val/l0": ev["l0"]})
+        wandb.log(metrics, step=step)
+
+
+class ImagesSAETrainer(_CleanupMixin, _SaevMetricsMixin, VisionSAETrainer):
     """Runs the ViT on images during training. dataset items must be (image_tensor, label)."""
 
-    def __init__(self, cfg: HookedSAEConfig, model, dataset, eval_dataset=None):
+    def __init__(self, cfg: HookedSAEConfig, model, dataset, eval_dataset=None, make_val: Callable[[], Iterable] | None = None):
+        self.make_val = make_val
         super().__init__(cfg, model, dataset, eval_dataset)
 
     def initialize_activations_store(self, dataset, eval_dataset):
         return ImageHookStore(self.cfg, self.model, dataset, eval_dataset=eval_dataset, num_workers=self.cfg.num_workers)
 
 
-class SaevSAETrainer(_CleanupMixin, VisionSAETrainer):
+class SaevSAETrainer(_CleanupMixin, _SaevMetricsMixin, VisionSAETrainer):
     """Reads activations from saev shards instead of running the ViT."""
 
-    def __init__(self, cfg: HookedSAEConfig, make_loader: Callable[[], Iterable]):
-        self._make_loader = make_loader
+    def __init__(self, cfg: HookedSAEConfig, make_loader: Callable[[], Iterable], make_val: Callable[[], Iterable] | None = None):
+        self._make_loader, self.make_val = make_loader, make_val
         super().__init__(cfg, model=None, dataset=[], eval_dataset=[])
 
     def initialize_activations_store(self, dataset, eval_dataset):

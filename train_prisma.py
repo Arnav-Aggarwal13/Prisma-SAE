@@ -97,7 +97,7 @@ def main():
             for md in mds:
                 assert md.d_model == cfg.d_in, f"shards d_model {md.d_model} != d_in {cfg.d_in}"
                 assert md.content_tokens_per_example == cfg.context_size, f"shards have {md.content_tokens_per_example} patches, cfg.context_size={cfg.context_size}"
-            return pb.SaevSAETrainer(cfg, pb.saev_loader(args.train_shards, args.saev_layer, cfg.train_batch_size, seed=17))
+            return pb.SaevSAETrainer(cfg, pb.saev_loader(args.train_shards, args.saev_layer, cfg.train_batch_size, seed=17), make_val=make_eval(cfg))
 
         def make_eval(cfg):
             return pb.saev_loader(args.val_shards, args.saev_layer, cfg.train_batch_size, seed=0)
@@ -117,7 +117,7 @@ def main():
         print(f"train images: {len(train_ds)}, val images: {len(val_ds)}", flush=True)
 
         def make_trainer(cfg):
-            return pb.ImagesSAETrainer(cfg, model, train_ds)
+            return pb.ImagesSAETrainer(cfg, model, train_ds, make_val=make_eval(cfg))
 
         def make_eval(cfg):
             return pb.image_token_batches(model, val_ds, cfg, n_images=args.eval_images, batch_images=cfg.store_batch_size, num_workers=min(8, cfg.num_workers))
