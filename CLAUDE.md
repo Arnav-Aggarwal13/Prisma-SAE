@@ -94,6 +94,8 @@ Train an SAE on the 256 x 1664 patch tokens that `model.visual(img)` returns wit
 - Inputs stay where SAETraining put them (read-only from here): thumbnails on pool, shards on scratch. This repo, its `.venv` and `$RUNS_DIR` live on home. The separate `.venv` is a second copy of torch and friends (~7 GB on home). Check usage in `~/orcd/.quota`.
 - Prisma checkpoints: each `n_images_<N>.pt` holds fp32 `W_enc` + `W_dec`, ~355 MB at 16x (26624 x 1664 x 2 x 4 B), ~710 MB at 32x. `bigG_config` writes `n_checkpoints=3` per run (~1.1 GB per 16x run). Keep runs on home (backed up, 200 GB) and prune old checkpoints.
 - W&B offline runs go to `$WANDB_DIR` (default `./wandb`); point it under `$RUNS_DIR`, not the repo.
+- For CPU jobs add: `#SBATCH --account=mit_amf_standard_cpu` and `#SBATCH --qos=mit_amf_standard_cpu`
+- For GPU jobs add: `#SBATCH --account=mit_amf_standard_gpu` and `#SBATCH --qos=mit_amf_standard_gpu`
 
 ## Training (`train_prisma.py`, which wraps `VisionSAETrainer.run`)
 - Per step (Prisma `train_sae.py`):
@@ -172,7 +174,7 @@ Eval: `train_prisma.py` runs `evaluate_sae` on val after each run and writes it 
 - Repo demos/tests are mostly stale. `demos/2_Train_SAE.ipynb` (on-the-fly CLIP-B/32, ImageNet) does run: tested on CPU with random weights, it trained, checkpointed and reloaded.
 
 
-##Arnav's Personalization
+## Arnav's Personalization
 - Any code you write, summarize in the chat what it does and why
 - Any code that runs for a non trivial amoutn of time, add progres bars or print statements in the log to track progress
 

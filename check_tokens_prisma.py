@@ -81,7 +81,19 @@ def main():
             items = [sds[i * n_tok + j] for j in range(n_tok)]
             assert all(it["example_idx"] == i for it in items)
             rows.append(torch.stack([it["act"] for it in items]))
-        ok &= compare("saev shard tokens vs Prisma", torch.stack(rows).to(args.device), acts[:, 1:], rel_tol=1e-2)
+        shard_toks = torch.stack(rows).to(args.device)
+        ok &= compare("saev shard tokens vs Prisma", shard_toks, acts[:, 1:], rel_tol=1e-2)
+        # Diagnostic: the shards were written with TF32, so also compare against Prisma with TF32 on.
+        torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = True
+        acts_tf32 = pb.get_hook_acts(prisma, x_oc, pb.LN_POST, prisma.cfg.n_layers)
+        torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = False
+        compare("saev shard tokens vs Prisma (TF32 on)", shard_toks, acts_tf32[:, 1:], rel_tol=1e-2)
+        for name, ref in (("fp32", acts[:, 1:]), ("tf32", acts_tf32[:, 1:])):
+            cos = torch.nn.functional.cosine_similarity(shard_toks.double(), ref.double(), dim=-1)  # (img, 256)
+            q = torch.quantile(cos.flatten(), torch.tensor([0.001, 0.01, 0.5], device=cos.device, dtype=cos.dtype))
+            print(f"diag {name}: token cosine q0.1%={q[0]:.4f} q1%={q[1]:.4f} median={q[2]:.6f}, tokens <0.99: {(cos < 0.99).sum().item()}/{cos.numel()}, per image min {[round(v, 3) for v in cos.min(1).values.tolist()]}")
+            bad = (cos < 0.99).nonzero()
+            print(f"diag {name}: bad token indices (img, patch) {bad[:12].tolist()}, norms shard/prisma {[(round(shard_toks[i, j].norm().item(), 1), round(ref[i, j].norm().item(), 1)) for i, j in bad[:6].tolist()]}")
 
     print("ALL PASS" if ok else "CHECK FAILED")
     sys.exit(0 if ok else 1)
