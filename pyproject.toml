@@ -1,0 +1,12 @@
+[project]
+name = "prisma-sae"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "saev",
+    "vit-prisma",
+]
+
+[tool.uv.sources]
+vit-prisma = { git = "https://github.com/Prisma-Multimodal/ViT-Prisma", rev = "64daf1425f7e5311844213fd0fb6f4127a30cd16" }
+saev = { git = "https://github.com/Imageomics/saev", rev = "9715c45ffc5aa822bfdac9610b62664503ed1a71" }
