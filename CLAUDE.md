@@ -170,3 +170,13 @@ Eval: `train_prisma.py` runs `evaluate_sae` on val after each run and writes it 
 - `val()` is unreachable. `n_validation_runs`, `from_pretrained_path` (so no resume) and `dead_feature_threshold` are unused.
 - `load_hooked_model(pretrained=False)` crashes (`state_dict` undefined). `cfg.num_patch` raises (no `import math`). A list-valued `hook_point_layer` is half-wired. Saved transcoders can't be reloaded.
 - Repo demos/tests are mostly stale. `demos/2_Train_SAE.ipynb` (on-the-fly CLIP-B/32, ImageNet) does run: tested on CPU with random weights, it trained, checkpointed and reloaded.
+
+
+##Arnav's Personalization
+- Any code you write, summarize in the chat what it does and why
+- Any code that runs for a non trivial amoutn of time, add progres bars or print statements in the log to track progress
+
+
+## Found on the first GPU run
+- `load_hooked_model` calls `move_model_modules_to_device()`, which uses `model.cfg.device` (defaults to cpu) and moves the patch embedding back to CPU after `model.to(device)`. Crash: "Input type (cuda) and weight type (cpu)". We pass `move_to_device=False` in `check_tokens_prisma.py` and the images route of `train_prisma.py`. Not seen on the CPU fixture.
+- The cached bigG safetensors loads offline via `$MODEL_LOCAL` (see `env.sh`), no .bin download needed.

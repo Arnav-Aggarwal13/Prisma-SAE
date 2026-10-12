@@ -109,7 +109,7 @@ def main():
 
         assert args.train_images and args.val_images, "--train-images and --val-images are required"
         probe = make_cfg({}, pb.N_BLOCKS)
-        model = load_hooked_model(probe.model_name, device=probe.device, local_path=args.model_local_path).eval()
+        model = load_hooked_model(probe.model_name, device=probe.device, local_path=args.model_local_path, move_to_device=False).eval()
         n_blocks = model.cfg.n_layers
         tf = get_clip_val_transforms()  # == open_clip's bigG preprocessing
         train_ds = torchvision.datasets.ImageFolder(args.train_images, transform=tf)

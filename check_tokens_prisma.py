@@ -55,7 +55,7 @@ def main():
     visual = oc_model.visual.to(args.device).eval()
     del oc_model
     visual.output_tokens = True
-    prisma = load_hooked_model(args.prisma_model, device=args.device, local_path=args.model_local_path).eval()
+    prisma = load_hooked_model(args.prisma_model, device=args.device, local_path=args.model_local_path, move_to_device=False).eval()
 
     ds = torchvision.datasets.ImageFolder(args.images)
     idx = torch.linspace(0, len(ds) - 1, min(args.n, len(ds))).long().tolist()
