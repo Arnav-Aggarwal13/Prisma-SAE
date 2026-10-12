@@ -62,6 +62,7 @@ def main():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--batch-size", type=int, default=4096)
     p.add_argument("--sweep", help="python file defining make_cfgs() -> list[dict]")
+    p.add_argument("--sweep-index", help="comma-separated indices into the sweep's make_cfgs() list; run only those entries")
     p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="config override for all runs, repeatable")
     p.add_argument("--eval-batches", type=int, default=50)
     p.add_argument("--eval-images", type=int, default=2000, help="images route: eval images (x256 tokens)")
@@ -122,13 +123,20 @@ def main():
         def make_eval(cfg):
             return pb.image_token_batches(model, val_ds, cfg, n_images=args.eval_images, batch_images=cfg.store_batch_size, num_workers=min(8, cfg.num_workers))
 
-    for overrides in load_sweep(args.sweep):
+    sweep = load_sweep(args.sweep)
+    if args.sweep_index:
+        idx = [int(i) for i in args.sweep_index.split(",")]
+        assert all(0 <= i < len(sweep) for i in idx), f"--sweep-index {idx} out of range for {len(sweep)} entries"
+        sweep = [sweep[i] for i in idx]
+    for overrides in sweep:
         cfg = make_cfg(overrides, n_blocks)
         print(f"=== run {overrides or '(defaults)'}: hook {cfg.hook_point}, d_sae {cfg.d_sae}, k {cfg.activation_fn_kwargs.get('k')}, steps {cfg.total_training_steps}", flush=True)
         t0 = time.time()
         trainer = make_trainer(cfg)
+        trainer.final_eval = lambda sae: pb.evaluate_sae(sae, make_eval(cfg), n_batches=args.eval_batches)
+        trainer.summary_extra = {"sweep_overrides": json.dumps(overrides), "route": args.route}
         sae = trainer.run()
-        metrics = pb.evaluate_sae(sae, make_eval(cfg), n_batches=args.eval_batches)
+        metrics = trainer.final_metrics
         row = dict(route=args.route, overrides=overrides, common=common, hook_point=cfg.hook_point, checkpoint_dir=trainer.cfg.checkpoint_path, minutes=round((time.time() - t0) / 60, 1), **metrics)
         print(json.dumps(row), flush=True)
         with open(results_fpath, "a") as fd:

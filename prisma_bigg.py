@@ -175,11 +175,26 @@ class SaevStore:
 
 
 class _CleanupMixin:
-    """The base run() leaves the loader and the W&B run open, which breaks the next run in the same process."""
+    """The base run() leaves the loader and the W&B run open, which breaks the next run in the same process.
+
+    Optional: set `final_eval` (callable sae -> metrics dict) and the final-SAE metrics are computed here, stored in `final_metrics` and written to the W&B run summary as final_val/*, together with `summary_extra`, before the run is closed.
+    """
+
+    final_eval: Callable[[object], dict] | None = None
+    final_metrics: dict | None = None
+    summary_extra: dict | None = None
 
     def run(self):
         try:
-            return super().run()
+            sae = super().run()
+            if self.final_eval is not None:
+                self.final_metrics = self.final_eval(sae)
+                if self.cfg.log_to_wandb:
+                    import wandb
+
+                    if wandb.run is not None:
+                        wandb.run.summary.update({**(self.summary_extra or {}), **{f"final_val/{k}": v for k, v in self.final_metrics.items()}})
+            return sae
         finally:
             self.activations_store.close()
             if self.cfg.log_to_wandb:

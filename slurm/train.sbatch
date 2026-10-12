@@ -18,11 +18,13 @@ echo "WANDB_MODE=$WANDB_MODE"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # Override with: sbatch --export=ALL,TOTAL_TOKENS=...,SWEEP=...,CKPT_DIR=... slurm/train.sbatch
 # SWEEP set but empty (SWEEP=) trains one default run (k=64, 16x, lr 1e-3).
-TOTAL_TOKENS=${TOTAL_TOKENS:-128000000}
+TOTAL_TOKENS=${TOTAL_TOKENS:-127000000}  # shards hold 127.56M tokens; stay within one epoch
 SWEEP=${SWEEP-sweeps/first_sweep.py}
 CKPT_DIR=${CKPT_DIR:-$RUNS_DIR}
 SWEEP_ARGS=()
 [ -n "$SWEEP" ] && SWEEP_ARGS=(--sweep "$SWEEP")
+# SWEEP_INDEX=0,1,2 runs only those entries of the sweep (split a sweep over several jobs).
+[ -n "${SWEEP_INDEX:-}" ] && SWEEP_ARGS+=(--sweep-index "$SWEEP_INDEX")
 uv run python train_prisma.py --route shards \
   --train-shards $SHARDS_ROOT/$TRAIN_HASH --val-shards $SHARDS_ROOT/$VAL_HASH --saev-layer 48 --model-local-path $MODEL_LOCAL \
   --ckpt-dir $CKPT_DIR --total-tokens $TOTAL_TOKENS "${SWEEP_ARGS[@]}"
