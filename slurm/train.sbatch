@@ -10,8 +10,11 @@
 #SBATCH --qos=mit_amf_standard_gpu
 set -euo pipefail
 cd $HOME/Prisma-SAE && source env.sh
-# Compute nodes may lack internet: log W&B offline, `wandb sync` later from a login node.
-export WANDB_MODE=${WANDB_MODE:-offline}
+# W&B login comes from ~/.netrc. Log online if this node can reach W&B, else offline (then `wandb sync` from a login node).
+if [ -z "${WANDB_MODE:-}" ]; then
+  if curl -s -m 10 -o /dev/null https://api.wandb.ai; then export WANDB_MODE=online; else export WANDB_MODE=offline; fi
+fi
+echo "WANDB_MODE=$WANDB_MODE"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # Override with: sbatch --export=ALL,TOTAL_TOKENS=...,SWEEP=...,CKPT_DIR=... slurm/train.sbatch
 # SWEEP set but empty (SWEEP=) trains one default run (k=64, 16x, lr 1e-3).
