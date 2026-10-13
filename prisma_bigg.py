@@ -38,6 +38,7 @@ class HookedSAEConfig(VisionModelSAERunnerConfig):
     """
 
     hook_point_name: str | None = None
+    stop_after_tokens: int | None = None  # stop training here but keep the lr schedule of the full total_tokens run (quick looks at a long run)
     val_n_batches: int = 4  # fixed val batches scored at every metrics step (0 = off); --set val_n_batches=N
 
     @property
@@ -203,6 +204,18 @@ class _CleanupMixin:
                 wandb.finish()
 
 
+class _EarlyStopMixin:
+    """cfg.stop_after_tokens: the scheduler is built from the full token budget, then the loop bound is cut, so the lr follows the full run's schedule up to the stop."""
+
+    def initialize_training_variables(self):
+        out = super().initialize_training_variables()  # scheduler uses cfg.total_training_steps (full budget)
+        if self.cfg.stop_after_tokens:
+            assert self.cfg.stop_after_tokens <= self.cfg.total_training_tokens, "stop_after_tokens exceeds total_tokens"
+            tokens_per_image = self.cfg.context_size - int(self.cfg.use_patches_only)
+            self.cfg.num_epochs = self.cfg.stop_after_tokens / (PRISMA_IMAGES_PER_EPOCH * tokens_per_image)  # shrinks the loop bound only
+        return out
+
+
 class _SaevMetricsMixin:
     """At every Prisma metrics step (wandb_log_frequency), also log saev's metrics to the same W&B step.
 
@@ -234,7 +247,7 @@ class _SaevMetricsMixin:
         wandb.log(metrics, step=step)
 
 
-class ImagesSAETrainer(_CleanupMixin, _SaevMetricsMixin, VisionSAETrainer):
+class ImagesSAETrainer(_CleanupMixin, _SaevMetricsMixin, _EarlyStopMixin, VisionSAETrainer):
     """Runs the ViT on images during training. dataset items must be (image_tensor, label)."""
 
     def __init__(self, cfg: HookedSAEConfig, model, dataset, eval_dataset=None, make_val: Callable[[], Iterable] | None = None):
@@ -245,7 +258,7 @@ class ImagesSAETrainer(_CleanupMixin, _SaevMetricsMixin, VisionSAETrainer):
         return ImageHookStore(self.cfg, self.model, dataset, eval_dataset=eval_dataset, num_workers=self.cfg.num_workers)
 
 
-class SaevSAETrainer(_CleanupMixin, _SaevMetricsMixin, VisionSAETrainer):
+class SaevSAETrainer(_CleanupMixin, _SaevMetricsMixin, _EarlyStopMixin, VisionSAETrainer):
     """Reads activations from saev shards instead of running the ViT."""
 
     def __init__(self, cfg: HookedSAEConfig, make_loader: Callable[[], Iterable], make_val: Callable[[], Iterable] | None = None):

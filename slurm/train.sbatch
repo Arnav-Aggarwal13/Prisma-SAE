@@ -23,6 +23,8 @@ SWEEP=${SWEEP-sweeps/first_sweep.py}
 CKPT_DIR=${CKPT_DIR:-$RUNS_DIR}
 SWEEP_ARGS=()
 [ -n "$SWEEP" ] && SWEEP_ARGS=(--sweep "$SWEEP")
+# STOP_AFTER_TOKENS=N stops each run at N tokens but keeps the lr schedule of the full TOTAL_TOKENS run.
+[ -n "${STOP_AFTER_TOKENS:-}" ] && SWEEP_ARGS+=(--set "stop_after_tokens=$STOP_AFTER_TOKENS")
 # SWEEP_INDEX=0+1+2 (use +, since sbatch --export splits on commas) runs only those entries of the sweep (split a sweep over several jobs).
 [ -n "${SWEEP_INDEX:-}" ] && SWEEP_ARGS+=(--sweep-index "$SWEEP_INDEX")
 uv run python train_prisma.py --route shards \
