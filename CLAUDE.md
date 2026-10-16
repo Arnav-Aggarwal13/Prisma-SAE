@@ -185,3 +185,9 @@ Eval: `train_prisma.py` runs `evaluate_sae` on val after each run and writes it 
 ## Found on the first GPU run
 - `load_hooked_model` calls `move_model_modules_to_device()`, which uses `model.cfg.device` (defaults to cpu) and moves the patch embedding back to CPU after `model.to(device)`. Crash: "Input type (cuda) and weight type (cpu)". We pass `move_to_device=False` in `check_tokens_prisma.py` and the images route of `train_prisma.py`. Not seen on the CPU fixture.
 - The cached bigG safetensors loads offline via `$MODEL_LOCAL` (see `env.sh`), no .bin download needed.
+
+## Analysis (`analyze_sae.py`, `slurm/analyze.sbatch`)
+- Best model so far: `$RUNS_DIR/full_tied/5dc3a416-bigg-prisma-sae/n_images_496128.pt` (TopK k=128, 16x, tied init `encoder_transpose_decoder`, batch 16384, 127M tokens; val nmse 0.219, 0.0% dead). The k=64 base of the same sweep: nmse 0.271. Tied init was the big win over the first sweep (93% dead -> ~0%).
+- `analyze_sae.py` encodes the val shards once (no bigG), then writes per-latent stats, top-K (activation, image, patch), `summary.json`, `frequency_hist.png` and heatmap grids under `--out`. Prisma's own eval/feature tools are ImageNet-oriented and partly broken (`highest_activating_tokens` is commented out), so they are not used.
+- Prisma's `load_from_pretrained` needs `current_cfg={"_device": ...}` to load on another device; `load_sae` handles it.
+- Re-render other latents without re-encoding: `sbatch --export=ALL,SKIP_ENCODE=1,FEATURES=12+345 slurm/analyze.sbatch`.
