@@ -152,8 +152,9 @@ def main():
     p.add_argument("--batch-size", type=int, default=8192)
     p.add_argument("--limit", type=int, help="only the first N images (smoke tests; refuses to write under the real out-root)")
     p.add_argument("--overwrite", action="store_true")
-    p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    p.add_argument("--device", default="cuda", help="cuda (default; fails if no usable GPU, so a bad node cannot silently fall back to CPU) or cpu")
     args = p.parse_args()
+    assert args.device == "cpu" or torch.cuda.is_available(), "no usable CUDA device on this node; pass --device cpu to run on CPU"
 
     t0, timings = time.time(), {}
     lap = lambda name: timings.__setitem__(name, round(time.time() - t0, 1))
