@@ -191,3 +191,9 @@ Eval: `train_prisma.py` runs `evaluate_sae` on val after each run and writes it 
 - `analyze_sae.py` encodes the val shards once (no bigG), then writes per-latent stats, top-K (activation, image, patch), `summary.json`, `frequency_hist.png` and heatmap grids under `--out`. Prisma's own eval/feature tools are ImageNet-oriented and partly broken (`highest_activating_tokens` is commented out), so they are not used.
 - Prisma's `load_from_pretrained` needs `current_cfg={"_device": ...}` to load on another device; `load_sae` handles it.
 - Re-render other latents without re-encoding: `sbatch --export=ALL,SKIP_ENCODE=1,FEATURES=12+345 slurm/analyze.sbatch`.
+
+## MindEye2 prior_out (`apply_sae.py`, `slurm/apply_sae.sbatch`)
+- Applies a Prisma SAE to MindEye2's cached `base_all_prior_out.pt` ((1000, 256, 1664) fp16, raw, never resampled) token by token, in order, and writes `<cond>_all_prior_out.pt` (fp16, same shape/row order), `<cond>_image_idx.npy` and `<cond>_sae_record.json` to `~/orcd/scratch/mindeye/outputs/<cond><wandb run id>/`. Never writes into `base/`. `--oracle` applies it to `base_clip_target.pt` (cond `sae_pre_oracle`).
+- Built-in checks (asserts): output finite and (1000, 256, 1664); flat per-image cosine retrieval of x from SAE(x) >= 99% (row order); encode+decode == `sae.forward`; re-running 16k tokens with another batch size changes nothing beyond fp rounding.
+- Compute is fp32 with TF32 off. The W&B run id is looked up by the checkpoint folder name (= run display name); `--wandb-run-id` overrides. `--dir-sep` puts text between `<cond>` and the id (spec: none).
+- 8-image CPU smoke test (k=128, 16x SAE): nmse 0.177, token cosine 0.936, output token norm 0.936 of input (46.2 -> 43.3), order retrieval 100%.
