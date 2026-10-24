@@ -191,6 +191,8 @@ Eval: `train_prisma.py` runs `evaluate_sae` on val after each run and writes it 
 - `analyze_sae.py` encodes the val shards once (no bigG), then writes per-latent stats, top-K (activation, image, patch), `summary.json`, `frequency_hist.png` and heatmap grids under `--out`. Prisma's own eval/feature tools are ImageNet-oriented and partly broken (`highest_activating_tokens` is commented out), so they are not used.
 - Prisma's `load_from_pretrained` needs `current_cfg={"_device": ...}` to load on another device; `load_sae` handles it.
 - Re-render other latents without re-encoding: `sbatch --export=ALL,SKIP_ENCODE=1,FEATURES=12+345 slurm/analyze.sbatch`.
+- Grids: 5 latents per PNG, 8 images per latent, 20 latents per group = 4 PNGs per group (`<group>_0..3.png`). Heat is drawn only on patches with activation >= `--heat-floor` (0.1) x the latent's max; weaker patches show the plain image (before, zero-activation patches were drawn in jet's dark blue at 55% alpha and tinted the whole image purple).
+- Re-rendering needs no GPU: `sbatch --export=ALL,CKPT=...,OUT=<analysis dir with features.npz> slurm/rerender_cpu.sbatch` (stage 2 only, CPU job; `FEATURES=12+345` for extra latents).
 
 ## MindEye2 prior_out (`apply_sae.py`, `slurm/apply_sae.sbatch`)
 - Applies a Prisma SAE to MindEye2's cached `base_all_prior_out.pt` ((1000, 256, 1664) fp16, raw, never resampled) token by token, in order, and writes `<cond>_all_prior_out.pt` (fp16, same shape/row order), `<cond>_image_idx.npy` and `<cond>_sae_record.json` to `~/orcd/scratch/mindeye/outputs/<cond><wandb run id>/`. Never writes into `base/`. `--oracle` applies it to `base_clip_target.pt` (cond `sae_pre_oracle`).

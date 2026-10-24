@@ -127,7 +127,8 @@ def top_images(f: int, st: dict, reader: ExampleReader, sae, n_img: int, device:
     return [(e, v, heat[i]) for i, (e, v) in enumerate(picks)]
 
 
-def render(groups: dict, st: dict, reader: ExampleReader, sae, ds, out: pathlib.Path, n_img: int, page_size: int, device: str):
+def render(groups: dict, st: dict, reader: ExampleReader, sae, ds, out: pathlib.Path, n_img: int, page_size: int, heat_floor: float, device: str):
+    """One PNG per page of `page_size` latents (a row each, `n_img` images across). Heat is drawn only on patches with activation >= heat_floor * the latent's max; the rest of the image is left clear."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -139,16 +140,18 @@ def render(groups: dict, st: dict, reader: ExampleReader, sae, ds, out: pathlib.
     for name, feats in groups.items():
         for p0 in range(0, len(feats), page_size):
             page = feats[p0 : p0 + page_size]
-            fig, axes = plt.subplots(len(page), n_img, figsize=(1.5 * n_img, 1.75 * len(page)), squeeze=False)
+            fig, axes = plt.subplots(len(page), n_img, figsize=(1.9 * n_img, 2.15 * len(page)), squeeze=False)
             for r, f in tqdm(list(enumerate(page)), desc=f"render {name} {p0 // page_size}", mininterval=20):
+                vmax = float(st["max_act"][f])
                 items = top_images(int(f), st, reader, sae, n_img, device)
                 for c in range(n_img):
                     axes[r, c].axis("off")
                     if c < len(items):
                         e, v, heat = items[c]
                         axes[r, c].imshow(show(ds[e][0]))
-                        axes[r, c].imshow(np.kron(heat, np.ones((PATCH, PATCH))), alpha=0.55, cmap="jet", vmin=0, vmax=float(st["max_act"][f]))
-                axes[r, 0].set_title(f"#{int(f)}  freq {st['freq'][f]:.1e}  max {st['max_act'][f]:.1f}  ({len(items)} imgs)", fontsize=7, loc="left")
+                        hot = np.ma.masked_less(np.kron(heat, np.ones((PATCH, PATCH))), heat_floor * vmax)  # masked = transparent, so weak patches show the plain image
+                        axes[r, c].imshow(hot, alpha=0.55, cmap="jet", vmin=0, vmax=vmax)
+                axes[r, 0].set_title(f"#{int(f)}  freq {st['freq'][f]:.1e}  max {vmax:.1f}  ({len(items)} imgs)", fontsize=9, loc="left")
             fig.tight_layout()
             fig.savefig(out / "grids" / f"{name}_{p0 // page_size}.png", dpi=90)
             plt.close(fig)
@@ -187,9 +190,10 @@ def main():
     p.add_argument("--saev-layer", type=int, default=pb.N_BLOCKS)
     p.add_argument("--batch-size", type=int, default=8192)
     p.add_argument("--top-k", type=int, default=64, help="top tokens kept per latent (several can be the same image)")
-    p.add_argument("--n-images", type=int, default=12, help="distinct images shown per latent")
+    p.add_argument("--n-images", type=int, default=8, help="distinct images shown per latent")
     p.add_argument("--n-per-group", type=int, default=20)
-    p.add_argument("--page-size", type=int, default=10, help="latents per PNG")
+    p.add_argument("--page-size", type=int, default=5, help="latents per PNG (20 per group = 4 PNGs)")
+    p.add_argument("--heat-floor", type=float, default=0.1, help="draw heat only on patches with activation >= this fraction of the latent's max; weaker patches show the plain image")
     p.add_argument("--features", default="", help="comma-separated latent ids to render as an extra 'chosen' group")
     p.add_argument("--max-tokens", type=int, help="stage 1 on only the first N tokens (smoke tests)")
     p.add_argument("--skip-encode", action="store_true", help="reuse OUT/features.npz")
@@ -223,7 +227,7 @@ def main():
     extra = [int(i) for i in args.features.split(",") if i]
     groups = pick_groups(st, args.n_per_group, args.seed, extra)
     print("stage 2: rendering", {k: len(v) for k, v in groups.items()}, flush=True)
-    render(groups, st, reader, sae, ds, out, args.n_images, args.page_size, args.device)
+    render(groups, st, reader, sae, ds, out, args.n_images, args.page_size, args.heat_floor, args.device)
     print(f"done ({time.time() - t0:.0f}s total). Output in {out}", flush=True)
 
 
