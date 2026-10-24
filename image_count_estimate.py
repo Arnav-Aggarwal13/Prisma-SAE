@@ -24,8 +24,9 @@ def main(dirs: list[str]):
         assert int(z["n_tok"]) == N_TOK, f"{d}: n_tok {int(z['n_tok'])} != {N_TOK}; not a full-val analysis"
         fired = np.rint(z["freq"] * N_TOK)
         lower, upper = np.ceil(fired / PATCHES), np.minimum(fired, N_IMG)
-        n_top = np.array([len(set(z["top_ex"][:, f])) for f in range(z["top_ex"].shape[1])])
-        est = np.clip(fired / (z["top_ex"].shape[0] / n_top), lower, upper)
+        top_ex = z["top_ex"]  # load once: every z[...] access re-reads the array from the npz
+        n_top = np.array([len(set(top_ex[:, f])) for f in range(top_ex.shape[1])])
+        est = np.clip(fired / (top_ex.shape[0] / n_top), lower, upper)
         np.savez(f"{d}/image_count_bounds.npz", tokens_fired=fired, lower=lower, upper=upper, est=est, n_img_top64=n_top)
         pct = lambda a: "  ".join(f"{v:8.0f}" for v in np.percentile(a, [10, 50, 90]))
         print(f"== {d}  ({len(fired)} latents)  columns: p10 / p50 / p90 over latents", flush=True)
