@@ -128,7 +128,7 @@ def top_images(f: int, st: dict, reader: ExampleReader, sae, n_img: int, device:
 
 
 def render(groups: dict, st: dict, reader: ExampleReader, sae, ds, out: pathlib.Path, n_img: int, page_size: int, heat_floor: float, device: str):
-    """One PNG per page of `page_size` latents (a row each, `n_img` images across). Heat is drawn only on patches with activation >= heat_floor * the latent's max; the rest of the image is left clear."""
+    """One PNG per page of `page_size` latents, `n_img` images across. Each latent gets two rows: the plain images, then the same images with the heat overlay. Heat is drawn only on patches with activation >= heat_floor * the latent's max; the rest of the image is left clear."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -140,18 +140,20 @@ def render(groups: dict, st: dict, reader: ExampleReader, sae, ds, out: pathlib.
     for name, feats in groups.items():
         for p0 in range(0, len(feats), page_size):
             page = feats[p0 : p0 + page_size]
-            fig, axes = plt.subplots(len(page), n_img, figsize=(1.9 * n_img, 2.15 * len(page)), squeeze=False)
+            # 3 grid rows per latent: plain images, overlay, and a thin spacer between latents
+            fig, axes = plt.subplots(3 * len(page), n_img, figsize=(1.7 * n_img, 4.0 * len(page)), squeeze=False, gridspec_kw=dict(height_ratios=[1, 1, 0.22] * len(page)))
+            for ax in axes.flat:
+                ax.axis("off")
             for r, f in tqdm(list(enumerate(page)), desc=f"render {name} {p0 // page_size}", mininterval=20):
                 vmax = float(st["max_act"][f])
                 items = top_images(int(f), st, reader, sae, n_img, device)
-                for c in range(n_img):
-                    axes[r, c].axis("off")
-                    if c < len(items):
-                        e, v, heat = items[c]
-                        axes[r, c].imshow(show(ds[e][0]))
-                        hot = np.ma.masked_less(np.kron(heat, np.ones((PATCH, PATCH))), heat_floor * vmax)  # masked = transparent, so weak patches show the plain image
-                        axes[r, c].imshow(hot, alpha=0.55, cmap="jet", vmin=0, vmax=vmax)
-                axes[r, 0].set_title(f"#{int(f)}  freq {st['freq'][f]:.1e}  max {vmax:.1f}  ({len(items)} imgs)", fontsize=9, loc="left")
+                for c, (e, v, heat) in enumerate(items):
+                    img = show(ds[e][0])
+                    axes[3 * r, c].imshow(img)
+                    axes[3 * r + 1, c].imshow(img)
+                    hot = np.ma.masked_less(np.kron(heat, np.ones((PATCH, PATCH))), heat_floor * vmax)  # masked = transparent, so weak patches show the plain image
+                    axes[3 * r + 1, c].imshow(hot, alpha=0.55, cmap="jet", vmin=0, vmax=vmax)
+                axes[3 * r, 0].set_title(f"#{int(f)}  freq {st['freq'][f]:.1e}  max {vmax:.1f}  ({len(items)} imgs)", fontsize=9, loc="left")
             fig.tight_layout()
             fig.savefig(out / "grids" / f"{name}_{p0 // page_size}.png", dpi=90)
             plt.close(fig)
