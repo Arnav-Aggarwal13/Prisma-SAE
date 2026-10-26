@@ -199,3 +199,8 @@ Eval: `train_prisma.py` runs `evaluate_sae` on val after each run and writes it 
 - Built-in checks (asserts): output finite and (1000, 256, 1664); flat per-image cosine retrieval of x from SAE(x) >= 99% (row order); encode+decode == `sae.forward`; re-running 16k tokens with another batch size changes nothing beyond fp rounding.
 - Compute is fp32 with TF32 off. The W&B run id is looked up by the checkpoint folder name (= run display name); `--wandb-run-id` overrides. `--dir-sep` puts text between `<cond>` and the id (spec: none).
 - 8-image CPU smoke test (k=128, 16x SAE): nmse 0.177, token cosine 0.936, output token norm 0.936 of input (46.2 -> 43.3), order retrieval 100%.
+
+## Val cosine similarity in W&B (`eval_val_cosine.py`, `slurm/val_cosine.sbatch`)
+- One pass over all val shards (5.09M tokens) for several SAEs at once; writes `val_full/*` into each SAE's own (finished) W&B run summary, plus `$RUNS_DIR/analysis/val_cosine/<run name>.json` (written first, so `--upload-only` can redo the upload from a login node).
+- Metrics, per token then summarised (mean, median, p1, min): `val_full/cosine_uncentered_*` = cos(y, x); `val_full/cosine_centered_*` = cos(y - m, x - m) with m = mean of the val-shard tokens (cached in `val_token_mean.pt`). Also `val_full/normalized_mse` (cross-check against `final_val/normalized_mse`, which uses only 819k tokens) and `val_full/n_tokens`.
+- W&B run ids: 5dc3a416 (k128 16x) = 8x0iy4jc, acf07f5c (k128 32x) = 2gp9q3hp, af59271f (k64 16x) = 9s9ppuap, f9c689a1 (k64 32x) = mw807zcr.
