@@ -192,6 +192,7 @@ Eval: `train_prisma.py` runs `evaluate_sae` on val after each run and writes it 
 - Prisma's `load_from_pretrained` needs `current_cfg={"_device": ...}` to load on another device; `load_sae` handles it.
 - Re-render other latents without re-encoding: `sbatch --export=ALL,SKIP_ENCODE=1,FEATURES=12+345 slurm/analyze.sbatch`.
 - Grids: 5 latents per PNG, 8 images per latent, 20 latents per group = 4 PNGs per group (`<group>_0..3.png`). Each latent has two rows: the plain images, then the same images with the heat overlay. Heat is drawn only on patches with activation >= `--heat-floor` (0.1) x the latent's max; weaker patches show the plain image (before, zero-activation patches were drawn in jet's dark blue at 55% alpha and tinted the whole image purple).
+- Heat rules (`--variants`, or `VARIANTS=thr:0.3+topp:0.5+topp:0.8` in `rerender_cpu.sbatch`), each rendered from the same images into `grids_<kind><percent>/` next to `grids/`: `thr:F` = patches with activation >= F x the latent's max over val (fixed bar); `topp:P` = per image, the strongest patches in decreasing order until they add up to P of that image's total activation for the latent (adapts to how concentrated the latent is; not equivalent to a threshold). Color scale is always 0..latent max.
 - Re-rendering needs no GPU: `sbatch --export=ALL,CKPT=...,OUT=<analysis dir with features.npz> slurm/rerender_cpu.sbatch` (stage 2 only, CPU job; `FEATURES=12+345` for extra latents).
 
 ## MindEye2 prior_out (`apply_sae.py`, `slurm/apply_sae.sbatch`)

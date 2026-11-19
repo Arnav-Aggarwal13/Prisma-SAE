@@ -12,10 +12,11 @@ cd $HOME/Prisma-SAE && source env.sh
 export OMP_NUM_THREADS=8
 # Re-render the grids of an existing analysis (stage 2 only, on CPU, no GPU needed). OUT must hold features.npz from analyze_sae.py.
 # Required: CKPT (the SAE the analysis was made with), OUT. Optional: COPY_FROM (analysis dir whose features.npz is copied into OUT first, for tests),
-#   FEATURES=12+345 (extra latents), N_PER_GROUP (default 20), HEAT_FLOOR (default 0.1).
+#   FEATURES=12+345 (extra latents), N_PER_GROUP (default 20), HEAT_FLOOR (default 0.1), VARIANTS=thr:0.3+topp:0.5 (heat rules, one folder each).
 : "${CKPT:?set CKPT}" "${OUT:?set OUT}"
 if [ -n "${COPY_FROM:-}" ]; then mkdir -p "$OUT" && cp "$COPY_FROM/features.npz" "$OUT/"; fi
 EXTRA=()
 [ -n "${FEATURES:-}" ] && EXTRA+=(--features "${FEATURES//+/,}")  # + instead of , because sbatch --export splits on commas
 [ -n "${HEAT_FLOOR:-}" ] && EXTRA+=(--heat-floor "$HEAT_FLOOR")
+[ -n "${VARIANTS:-}" ] && EXTRA+=(--variants "${VARIANTS//+/,}")  # e.g. thr:0.3+topp:0.5, each into OUT/grids_<kind><percent>/
 uv run python analyze_sae.py --ckpt $CKPT --val-shards $SHARDS_ROOT/$VAL_HASH --images $VAL_IMAGES --saev-layer 48 --out $OUT --skip-encode --device cpu --n-per-group ${N_PER_GROUP:-20} "${EXTRA[@]}"

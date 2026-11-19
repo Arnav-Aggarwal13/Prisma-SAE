@@ -11,6 +11,7 @@ Output in --out: features.npz, summary.json, frequency_hist.png, grids/<group>_<
 import argparse
 import json
 import pathlib
+import re
 import sys
 import time
 
@@ -127,8 +128,27 @@ def top_images(f: int, st: dict, reader: ExampleReader, sae, n_img: int, device:
     return [(e, v, heat[i]) for i, (e, v) in enumerate(picks)]
 
 
-def render(groups: dict, st: dict, reader: ExampleReader, sae, ds, out: pathlib.Path, n_img: int, page_size: int, heat_floor: float, device: str):
-    """One PNG per page of `page_size` latents, `n_img` images across. Each latent gets two rows: the plain images, then the same images with the heat overlay. Heat is drawn only on patches with activation >= heat_floor * the latent's max; the rest of the image is left clear."""
+def keep_mask(heat: np.ndarray, kind: str, val: float, vmax: float) -> np.ndarray:
+    """Boolean 16x16 mask of the patches that get heat.
+    thr:  activation >= val * the latent's max over the val set (one fixed bar for every image).
+    topp: this image's strongest patches, taken in decreasing order until they add up to `val` of the image's total activation for the latent (adapts to how concentrated the latent is in the image)."""
+    if kind == "thr":
+        return heat >= val * vmax
+    flat = heat.ravel()
+    order = np.argsort(-flat)
+    cum = np.cumsum(flat[order])
+    k = int(np.searchsorted(cum, val * cum[-1])) + 1  # fewest patches whose cumulative activation reaches val * total
+    keep = np.zeros(flat.shape, bool)
+    keep[order[:k]] = True
+    return (keep & (flat > 0)).reshape(heat.shape)
+
+
+def variant_label(kind: str, val: float) -> str:
+    return f"heat on patches >= {val:.0%} of the latent's max" if kind == "thr" else f"heat on the top patches making up {val:.0%} of each image's total activation"
+
+
+def render(groups: dict, st: dict, reader: ExampleReader, sae, ds, out: pathlib.Path, n_img: int, page_size: int, variants: list, device: str):
+    """One PNG per page of `page_size` latents, `n_img` images across. Each latent gets two rows: the plain images, then the same images with the heat overlay. `variants` = [(folder, kind, value)], each rendered into out/<folder>/ from the same images (see keep_mask); patches without heat show the plain image."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -136,27 +156,34 @@ def render(groups: dict, st: dict, reader: ExampleReader, sae, ds, out: pathlib.
     import torchvision.transforms as T
 
     show = T.Compose([T.Resize(224, interpolation=T.InterpolationMode.BICUBIC), T.CenterCrop(224)])
-    (out / "grids").mkdir(parents=True, exist_ok=True)
+    for folder, _, _ in variants:
+        (out / folder).mkdir(parents=True, exist_ok=True)
     for name, feats in groups.items():
         for p0 in range(0, len(feats), page_size):
             page = feats[p0 : p0 + page_size]
-            # 3 grid rows per latent: plain images, overlay, and a thin spacer between latents
-            fig, axes = plt.subplots(3 * len(page), n_img, figsize=(1.7 * n_img, 4.0 * len(page)), squeeze=False, gridspec_kw=dict(height_ratios=[1, 1, 0.22] * len(page)))
-            for ax in axes.flat:
-                ax.axis("off")
+            figs = {}
+            for folder, _, _ in variants:  # 3 grid rows per latent: plain images, overlay, and a thin spacer between latents
+                figs[folder] = plt.subplots(3 * len(page), n_img, figsize=(1.7 * n_img, 4.0 * len(page)), squeeze=False, gridspec_kw=dict(height_ratios=[1, 1, 0.22] * len(page)))
+                for ax in figs[folder][1].flat:
+                    ax.axis("off")
             for r, f in tqdm(list(enumerate(page)), desc=f"render {name} {p0 // page_size}", mininterval=20):
                 vmax = float(st["max_act"][f])
-                items = top_images(int(f), st, reader, sae, n_img, device)
-                for c, (e, v, heat) in enumerate(items):
-                    img = show(ds[e][0])
-                    axes[3 * r, c].imshow(img)
-                    axes[3 * r + 1, c].imshow(img)
-                    hot = np.ma.masked_less(np.kron(heat, np.ones((PATCH, PATCH))), heat_floor * vmax)  # masked = transparent, so weak patches show the plain image
-                    axes[3 * r + 1, c].imshow(hot, alpha=0.55, cmap="jet", vmin=0, vmax=vmax)
-                axes[3 * r, 0].set_title(f"#{int(f)}  freq {st['freq'][f]:.1e}  max {vmax:.1f}  ({len(items)} imgs)", fontsize=9, loc="left")
-            fig.tight_layout()
-            fig.savefig(out / "grids" / f"{name}_{p0 // page_size}.png", dpi=90)
-            plt.close(fig)
+                items = top_images(int(f), st, reader, sae, n_img, device)  # once per latent, shared by all variants
+                imgs = [show(ds[e][0]) for e, _, _ in items]
+                for folder, kind, val in variants:
+                    axes = figs[folder][1]
+                    for c, ((e, v, heat), img) in enumerate(zip(items, imgs)):
+                        axes[3 * r, c].imshow(img)
+                        axes[3 * r + 1, c].imshow(img)
+                        up = lambda a: np.kron(a, np.ones((PATCH, PATCH)))
+                        hot = np.ma.masked_where(~up(keep_mask(heat, kind, val, vmax)).astype(bool), up(heat))  # masked = transparent
+                        axes[3 * r + 1, c].imshow(hot, alpha=0.55, cmap="jet", vmin=0, vmax=vmax)
+                    axes[3 * r, 0].set_title(f"#{int(f)}  freq {st['freq'][f]:.1e}  max {vmax:.1f}  ({len(items)} imgs)  |  {variant_label(kind, val)}", fontsize=8, loc="left")
+            for folder, _, _ in variants:
+                fig = figs[folder][0]
+                fig.tight_layout()
+                fig.savefig(out / folder / f"{name}_{p0 // page_size}.png", dpi=90)
+                plt.close(fig)
 
 
 def summarize(st: dict, out: pathlib.Path) -> dict:
@@ -196,6 +223,7 @@ def main():
     p.add_argument("--n-per-group", type=int, default=20)
     p.add_argument("--page-size", type=int, default=5, help="latents per PNG (20 per group = 4 PNGs)")
     p.add_argument("--heat-floor", type=float, default=0.1, help="draw heat only on patches with activation >= this fraction of the latent's max; weaker patches show the plain image")
+    p.add_argument("--variants", default="", help='heat rules to render, "thr:0.3+topp:0.5" (separate with + or ,). thr:F = patches >= F x the latent max; topp:P = per image, the top patches adding up to P of its total activation. Each goes to grids_<kind><percent>/ (e.g. grids_thr30/). Default: thr:<--heat-floor> into grids/')
     p.add_argument("--features", default="", help="comma-separated latent ids to render as an extra 'chosen' group")
     p.add_argument("--max-tokens", type=int, help="stage 1 on only the first N tokens (smoke tests)")
     p.add_argument("--skip-encode", action="store_true", help="reuse OUT/features.npz")
@@ -229,7 +257,12 @@ def main():
     extra = [int(i) for i in args.features.split(",") if i]
     groups = pick_groups(st, args.n_per_group, args.seed, extra)
     print("stage 2: rendering", {k: len(v) for k, v in groups.items()}, flush=True)
-    render(groups, st, reader, sae, ds, out, args.n_images, args.page_size, args.heat_floor, args.device)
+    if args.variants:
+        variants = [(f"grids_{k}{round(float(v) * 100)}", k, float(v)) for k, v in (x.split(":") for x in re.split("[,+]", args.variants))]
+        assert all(k in ("thr", "topp") and 0 < v <= 1 for _, k, v in variants), f"bad --variants {args.variants!r}"
+    else:
+        variants = [("grids", "thr", args.heat_floor)]
+    render(groups, st, reader, sae, ds, out, args.n_images, args.page_size, variants, args.device)
     print(f"done ({time.time() - t0:.0f}s total). Output in {out}", flush=True)
 
 
